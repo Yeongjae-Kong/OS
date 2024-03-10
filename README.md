@@ -1,4 +1,4 @@
-## OS
+# OS
 
 #### mini_project
 
@@ -23,6 +23,8 @@ Objectives of this project
 • Understand how context-switches are performed in xv6 code
 • Implement a CFS scheduler
 • Implement a EEVDF scheduler based on the CFS scheduler
+
+--------------------
 
 #### pj2
 
