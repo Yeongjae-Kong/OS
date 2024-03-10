@@ -1,0 +1,263 @@
+diff --git a/defs.h b/defs.h
+index bc00645..f932a9c 100644
+--- a/defs.h
++++ b/defs.h
+@@ -68,7 +68,6 @@ char*           kalloc(int, char*);
+ void            kfree(int, char*);
+ void            kinit1(void*, void*);
+ void            kinit2(void*, void*);
+-uint			ittraverse(int, char*);
+ 
+ // kbd.c
+ void            kbdintr(void);
+diff --git a/kalloc.c b/kalloc.c
+index 43e14c2..20e2fb9 100644
+--- a/kalloc.c
++++ b/kalloc.c
+@@ -64,37 +64,98 @@ freerange(void *vstart, void *vend)
+ // call to kalloc().  (The exception is when
+ // initializing the allocator; see kinit above.)
+ 
+-void kfree(int pid, char *v){
+-
+-  uint kv, idx;
+-  //TODO: Fill the code that supports kfree
+-  //1. Find the corresponding physical address for given pid and VA
+-  //2. Initialize the PID[idx], VPN[idx], and PTE_XV6[idx]
+-  //3. For memset, Convert the physical address for free to kernel's virtual address by using P2V macro
+-  memset(kv, 1, PGSIZE); //TODO: You must perform memset for P2V(physical address);
++uint kalloc_hash_function(const void* va, int pid) {
++    return ((uint)va / PGSIZE + pid) % MAXENTRY;
++}
++
++void kfree(int pid, char* v) {
++
++    uint idx, start_idx, phys_addr;
++
++    phys_addr = (uint)V2P(v);
++
++    idx = phys_addr / PGSIZE;
++	start_idx = idx;
++
++   /* cprintf("kfree called: pid=%d, va=%x, V2P=%p, index=%d, hash=%d\n", pid, v, phys_addr, idx, kalloc_hash_function(v, pid));*/
++
++	//TODO: Fill the code that supports kfree
++	//1. Find the corresponding physical address for given pid and VA
++	//2. Initialize the PID[idx], VPN[idx], and PTE_XV6[idx]
++	//3. For memset, Convert the physical address for free to kernel's virtual address by using P2V macro
++
++	do {
++		if (PID[idx] == pid) {
++			PID[idx] = -1;
++			VPN[idx] = 0;
++			PTE_XV6[idx] = 0;
++
++			memset((void*)P2V(idx * PGSIZE), 0, PGSIZE);
++
++			return;
++		}
++		
++		idx = (idx + 1) % MAXENTRY;
++	} while (idx != start_idx);
++
+ }
+ 
+ // Allocate one 4096-byte page of physical memory.
+ // Returns a pointer that the kernel can use.
+ // Returns 0 if the memory cannot be allocated.
+ 
+-char*
+-kalloc(int pid, char *v)
+-{
++char* kalloc(int pid, char* v) {
++    int idx, start_idx;
+ 
+-  int idx;
+- 
+-  if(kmem.use_lock)
+-    acquire(&kmem.lock);
++    if (kmem.use_lock)
++        acquire(&kmem.lock);
++    
++    // when v==-1
++    if (v == (char*)-1) {
++        idx = 0;
++        start_idx = 0;
+ 
+-  //TODO: Fill the code that supports kalloc
+-  //1. Find the freespace by hash function
+-  //2. Consider the case that v is -1, which means that the caller of kalloc is kernel so the virtual address is decided by the allocated physical address (P2V) 
+-  //3. Update the value of PID[idx] and VPN[idx] (Do not update the PTE_XV6[idx] in this code!)
+-  //4. Return (char*)P2V(physical address), if there is no free space, return 0
+-  if(kmem.use_lock)
+-    release(&kmem.lock);
+-  return 0;
++        do {
++            uint phys_addr = idx * PGSIZE;
++
++            if (PID[idx] == -1) {
++                PID[idx] = pid;
++                VPN[idx] = (uint)v;
++
++                if (kmem.use_lock)
++                    release(&kmem.lock);
++
++                return (char*)P2V(phys_addr);
++            }
++
++            idx = (idx + 1) % MAXENTRY;
++        } while (idx != start_idx);
++    }
++    else {
++        idx = kalloc_hash_function((const void*)v, pid);
++        start_idx = idx;
++
++        do {
++            uint phys_addr = idx * PGSIZE;
++
++            if (PID[idx] == -1) {
++                PID[idx] = pid;
++                VPN[idx] = (uint)v / PGSIZE;
++
++                if (kmem.use_lock)
++                    release(&kmem.lock);
++
++                return (char*)P2V(phys_addr);
++            }
++
++            idx = (idx + 1) % MAXENTRY;
++        } while (idx != start_idx);
++    }
++
++    if (kmem.use_lock)
++        release(&kmem.lock);
++
++    return 0;
+ }
+ 
+ /*
+diff --git a/vm.c b/vm.c
+index 08d7857..8289a2d 100644
+--- a/vm.c
++++ b/vm.c
+@@ -7,6 +7,8 @@
+ #include "proc.h"
+ #include "elf.h"
+ 
++#define MAXENTRY 57334
++
+ extern char data[];  // defined by kernel.ld
+ extern uint PTE_XV6[];
+ extern uint PTE_KERN[];
+@@ -40,6 +42,30 @@ seginit(void)
+ // that corresponds to virtual address va.  If alloc!=0,
+ // create any required page table pages.
+ 
++uint hash_function(const void* va, int pid) {
++    return ((uint)va / PGSIZE + pid) % MAXENTRY;
++}
++
++int searchit(const void* va, int pid) {                            
++    uint idx;
++    uint start_idx;
++
++    idx = hash_function(va, pid);
++    start_idx = idx;
++
++    do {
++        if (PID[idx] == pid && VPN[idx] == ((uint)va / PGSIZE)) {
++            /*cprintf("[Completion idx:%d] PID:%d, VA:0x%d\n", idx, pid, va);*/
++            return idx;
++        }
++        idx = (idx + 1) % MAXENTRY;
++
++    } while (idx != start_idx);
++
++   /* cprintf(" (searchit fail) PID[idx]=%d, VPN[idx]=%d, index=%d\n", PID[idx], VPN[idx], idx);*/
++    return -1;
++}
++
+ static pte_t *
+ ittraverse(int pid, pde_t *pgdir, const void *va, int alloc) //You don't have to consider the pgdir argument
+ {
+@@ -48,6 +74,14 @@ ittraverse(int pid, pde_t *pgdir, const void *va, int alloc) //You don't have to
+ 	//1. Handle two case: the VA is over KERNBASE or not.
+ 	//2. For former case, return &PTE_KERN[(uint)V2P(physical address)];
+ 	//3. For latter case, find the phyiscal address for given pid and va using inverted page table, and return &PTE_XV6[idx]
++
++    if ((uint)va >= KERNBASE) {
++        return &PTE_KERN[(uint)V2P(va) / PGSIZE];
++    }
++    else {
++        idx = searchit(va, pid);
++        return &PTE_XV6[idx];
++    }
+ }
+ 
+ static pte_t *
+@@ -282,14 +316,25 @@ allocuvm(int pid, pde_t *pgdir, uint oldsz, uint newsz, uint flags)
+ 
+ int
+ deallocuvm(int pid, pde_t *pgdir, uint oldsz, uint newsz){
+-  pte_t *pte;
+-  uint a, pa;
+-  if(newsz >= oldsz)
+-    return oldsz;
+-  a = PGROUNDUP(newsz);
+-  //TODO: File the code that free the allocated pages by users
+-  //For range in (a <= va < oldsz), if there are some pages that the process allocates, call kfree(pid, v)
+-  return newsz; 
++    uint a, pa, idx;
++
++    if (newsz >= oldsz)
++        return oldsz;
++
++    a = PGROUNDUP(newsz);
++    for (; a < oldsz; a += PGSIZE) {
++        idx = searchit((const void*)a, pid);
++        if (idx != -1) { // 유효한 인덱스를 찾은 경우
++            pa = PTE_ADDR(PTE_XV6[idx]);
++            if (pa) {
++                kfree(pid, (char*)P2V(pa));
++            }
++        }
++        else {
++            return newsz;
++        }
++    }
++    return newsz;
+ }
+ 
+ // Free a page table and all the physical memory pages
+@@ -416,6 +461,17 @@ static uint __virt_to_phys(int pid, int shadow, pde_t *pgdir, struct proc *proc,
+   } 
+   //TODO: Fill the code that converts VA to PA for given pid
+   //Hint: Use ittraverse!
++
++  // 반전된 페이지 테이블을 사용하여 VA를 PA로 변환
++  pte = ittraverse(pid, pgdir, (void*)va, 0);
++  if (pte && (*pte & PTE_P)) {
++      pa = PTE_ADDR(*pte);
++  }
++  else {
++      // 적절한 PTE를 찾지 못한 경우 오류 처리
++      panic("__virt_to_phys: invalid address");
++  }
++
+   return pa;
+ }
+ 
+@@ -425,6 +481,13 @@ static int __get_flags(int pid, pde_t *pgdir, struct proc *proc, uint va){
+   pte_t *pte;
+   //TODO: Fill the code that gets flags in PTE_XV6[idx] 
+   //Hint: use the ittraverse and macro!
++
++  pte = ittraverse(pid, pgdir, (void*)va, 0);
++  if (pte == 0)
++      panic("get_flags: pte not found");
++
++  flags = PTE_FLAGS(*pte);
++
+   return flags;
+ }
+ // Same as __virt_to_phys(), but with extra log
