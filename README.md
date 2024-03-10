@@ -1,6 +1,6 @@
 # OS
 
-#### mini_project
+### mini_project
 
 1. Print the wall time of a process upon termination
 2. Make Bash-like command prompt
@@ -15,7 +15,7 @@ Objectives of this project
 
 ---------------------
 
-#### pj1
+### pj1
 
 1. Implement a simplified CFS and EEVDF scheduler in the xv6. Modify the default xv6 scheduler to a CFS and EEVDF scheduler.
 
@@ -26,7 +26,7 @@ Objectives of this project
 
 --------------------
 
-#### pj2
+### pj2
 
 1. Implement a inverted page table in the xv6. Modify the default paging scheme (multi-level paging) to inverted page table.
 
