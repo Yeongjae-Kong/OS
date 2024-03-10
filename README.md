@@ -3,8 +3,8 @@
 ### mini_project
 
 1. Print the wall time of a process upon termination
-2. 
-3. Make Bash-like command prompt
+   
+2. Make Bash-like command prompt
    
 • Xv6’s command prompt only shows “$”
 
