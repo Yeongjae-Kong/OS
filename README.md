@@ -1,4 +1,8 @@
-# OS
+# OS projects
+
+### Description
+
+Ubuntu 22.04.3 LTS
 
 ### mini_project
 
